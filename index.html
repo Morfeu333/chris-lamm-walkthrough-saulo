@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Walkthrough — Arquitetura Chris Lamm | 2026-05-01</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+
+  header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 1.1rem; font-weight: 600; color: #58a6ff; }
+  header span { font-size: 0.85rem; color: #8b949e; }
+  .badge { background: #21262d; border: 1px solid #30363d; border-radius: 12px; padding: 2px 10px; font-size: 0.75rem; color: #8b949e; }
+
+  .layout { display: grid; grid-template-columns: 1fr 400px; gap: 0; height: calc(100vh - 57px); }
+
+  /* Left — frame viewer */
+  .viewer { background: #010409; display: flex; flex-direction: column; }
+  .frame-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
+  .frame-wrap img { max-width: 100%; max-height: 100%; border-radius: 8px; border: 1px solid #21262d; }
+
+  /* Timeline */
+  .timeline { background: #161b22; border-top: 1px solid #30363d; padding: 12px 20px; }
+  .progress-bar { width: 100%; height: 4px; background: #21262d; border-radius: 2px; cursor: pointer; margin-bottom: 10px; position: relative; }
+  .progress-fill { height: 100%; background: #58a6ff; border-radius: 2px; transition: width 0.2s; }
+  .controls { display: flex; align-items: center; gap: 12px; }
+  .controls button { background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: background 0.15s; }
+  .controls button:hover { background: #30363d; }
+  .controls button.active { background: #1f6feb; border-color: #388bfd; }
+  .time-display { font-size: 0.8rem; color: #8b949e; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .seg-counter { font-size: 0.8rem; color: #8b949e; }
+
+  /* Right — transcript */
+  .transcript { border-left: 1px solid #30363d; display: flex; flex-direction: column; background: #161b22; }
+  .transcript-header { padding: 14px 16px; border-bottom: 1px solid #30363d; font-size: 0.8rem; color: #8b949e; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; }
+  .transcript-body { flex: 1; overflow-y: auto; padding: 8px; scroll-behavior: smooth; }
+  .segment { padding: 10px 12px; border-radius: 6px; margin-bottom: 4px; cursor: pointer; transition: background 0.15s; border-left: 3px solid transparent; }
+  .segment:hover { background: #21262d; }
+  .segment.active { background: #1f2d40; border-left-color: #58a6ff; }
+  .segment.past { opacity: 0.45; }
+  .seg-time { font-size: 0.7rem; color: #58a6ff; font-variant-numeric: tabular-nums; margin-bottom: 3px; font-weight: 600; }
+  .seg-text { font-size: 0.88rem; line-height: 1.55; color: #c9d1d9; }
+  .segment.active .seg-text { color: #e6edf3; }
+
+  /* Frame info overlay */
+  .frame-info { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); color: #8b949e; font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; }
+
+  /* Keyboard hint */
+  .kb-hint { font-size: 0.72rem; color: #484f58; text-align: center; padding: 6px; }
+  kbd { background: #21262d; border: 1px solid #30363d; border-radius: 3px; padding: 1px 5px; font-size: 0.68rem; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; grid-template-rows: 60vh 40vh; }
+    .transcript { border-left: none; border-top: 1px solid #30363d; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏗️ Arquitetura Chris Lamm — Walkthrough para Saulo</h1>
+  <span class="badge">01 Mai 2026 · 16:11</span>
+  <span class="badge">13:38</span>
+  <span class="badge">161 segmentos</span>
+</header>
+
+<div class="layout">
+  <div class="viewer">
+    <div class="frame-wrap" id="frameWrap" style="position:relative">
+      <img id="mainFrame" src="" alt="Frame">
+    </div>
+    <div class="timeline">
+      <div class="progress-bar" id="progressBar" onclick="seekFromBar(event)">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="controls">
+        <button onclick="prevSeg()">◀ Anterior</button>
+        <button id="playBtn" class="active" onclick="togglePlay()">⏸ Pausar</button>
+        <button onclick="nextSeg()">Próximo ▶</button>
+        <span class="seg-counter" id="segCounter">1 / 161</span>
+        <span class="time-display" id="timeDisplay">0:00 / 13:38</span>
+      </div>
+      <div class="kb-hint"><kbd>←</kbd> <kbd>→</kbd> navegar &nbsp;|&nbsp; <kbd>Space</kbd> play/pause</div>
+    </div>
+  </div>
+
+  <div class="transcript">
+    <div class="transcript-header">📝 Transcrição sincronizada</div>
+    <div class="transcript-body" id="transcriptBody"></div>
+  </div>
+</div>
+
+<script>
+const segments = [{"start_ms": 31, "end_ms": 4771, "start_s": 0, "text": "Saulo, olha isso aqui, eu configurei esse chatroot aqui só no prompt.", "frame": "frames/frame_0000s.jpg"}, {"start_ms": 5411, "end_ms": 10431, "start_s": 5, "text": "Aqui eu tô no Mac e esse chatroot tá instalado ali no meu Xeon, o outro computador que fica ali.", "frame": "frames/frame_0000s.jpg"}, {"start_ms": 11071, "end_ms": 20751, "start_s": 11, "text": "Aí eu modifiquei esse chatroot pra ele conectar no Instagram e pra ele rotear comentário, porque o chatroot não aceita", "frame": "frames/frame_0010s.jpg"}, {"start_ms": 20751, "end_ms": 22131, "start_s": 20, "text": "comentário, né? Só DM.", "frame": "frames/frame_0020s.jpg"}, {"start_ms": 23111, "end_ms": 27791, "start_s": 23, "text": "E aí eu configurei todos os canais de comunicação dele só no prompt ali.", "frame": "frames/frame_0020s.jpg"}, {"start_ms": 29832, "end_ms": 34552, "start_s": 29, "text": "Mano, eu fiz um negócio muito da hora, eu tô manjando muito de chatbot assim, começando a fazer um negócio", "frame": "frames/frame_0030s.jpg"}, {"start_ms": 34552, "end_ms": 38532, "start_s": 34, "text": "muito legal aqui nele. Aí tem tudo aqui ó, o Telegram, com os bots,", "frame": "frames/frame_0030s.jpg"}, {"start_ms": 39732, "end_ms": 47669, "start_s": 39, "text": "o WhatsApp sem ser oficial, o Instagram e...", "frame": "frames/frame_0040s.jpg"}, {"start_ms": 47669, "end_ms": 52609, "start_s": 47, "text": "o whatsapp, o whatsapp oficial que eu criei ontem esse aqui tudo eu criei de ontem pra hoje ó, de", "frame": "frames/frame_0050s.jpg"}, {"start_ms": 52609, "end_ms": 58589, "start_s": 52, "text": "madrugada esse aqui com o whatsapp oficial esse aqui sem o whatsapp oficial esse aqui instagram e esse aqui telegram", "frame": "frames/frame_0050s.jpg"}, {"start_ms": 58589, "end_ms": 67229, "start_s": 58, "text": "daqui a pouco eu vou conectar mais coisa aqui aí mano, no caso do cara o", "frame": "frames/frame_0060s.jpg"}, {"start_ms": 73649, "end_ms": 75289, "start_s": 73, "text": "negócio do cara é o seguinte, tá vendo?", "frame": "frames/frame_0070s.jpg"}, {"start_ms": 75429, "end_ms": 76609, "start_s": 75, "text": "tem um iMessages aqui", "frame": "frames/frame_0080s.jpg"}, {"start_ms": 78263, "end_ms": 78643, "start_s": 78, "text": "Aí,", "frame": "frames/frame_0080s.jpg"}, {"start_ms": 79663, "end_ms": 84403, "start_s": 79, "text": "acho que eu te mostrei o workflow que roteia as mensagens do iMessages.", "frame": "frames/frame_0080s.jpg"}, {"start_ms": 85043, "end_ms": 85863, "start_s": 85, "text": "É esse aqui.", "frame": "frames/frame_0080s.jpg"}, {"start_ms": 87343, "end_ms": 88423, "start_s": 87, "text": "Tá funcionando belezinha.", "frame": "frames/frame_0090s.jpg"}, {"start_ms": 89983, "end_ms": 94923, "start_s": 89, "text": "Aí, esse aqui é o que acontece quando ele envia mensagem.", "frame": "frames/frame_0090s.jpg"}, {"start_ms": 95383, "end_ms": 97443, "start_s": 95, "text": "Tipo, quando aperta o botão lá de enviar, né?", "frame": "frames/frame_0100s.jpg"}, {"start_ms": 99263, "end_ms": 102823, "start_s": 99, "text": "É aquele ali. Acredito eu.", "frame": "frames/frame_0100s.jpg"}, {"start_ms": 104183, "end_ms": 105243, "start_s": 104, "text": "E quando recebe também.", "frame": "frames/frame_0100s.jpg"}, {"start_ms": 105943, "end_ms": 110923, "start_s": 105, "text": "Quem fez esse aqui foi... Esse aqui foi eu, mas aquele lá, bonitão, foi o Gustavo.", "frame": "frames/frame_0100s.jpg"}, {"start_ms": 111643, "end_ms": 113603, "start_s": 111, "text": "Aí, esse aqui, ó, fica criando autodraft.", "frame": "frames/frame_0110s.jpg"}, {"start_ms": 114683, "end_ms": 121363, "start_s": 114, "text": "Então, vários... Vários contatos dele... Ele fica criando autodraft.", "frame": "frames/frame_0110s.jpg"}, {"start_ms": 121483, "end_ms": 123403, "start_s": 121, "text": "Tá vendo? Quando não tem resposta, não tem resposta.", "frame": "frames/frame_0120s.jpg"}, {"start_ms": 123723, "end_ms": 124523, "start_s": 123, "text": "Será que ele parou agora?", "frame": "frames/frame_0120s.jpg"}, {"start_ms": 126123, "end_ms": 129123, "start_s": 126, "text": "Mas,", "frame": "frames/frame_0130s.jpg"}, {"start_ms": 130303, "end_ms": 131343, "start_s": 130, "text": "ó, por exemplo...", "frame": "frames/frame_0130s.jpg"}, {"start_ms": 132888, "end_ms": 146028, "start_s": 132, "text": "se eu vier aqui, vamos pegar esse cara aqui por exemplo se eu vier aqui eu posso escrever e selecionar", "frame": "frames/frame_0130s.jpg"}, {"start_ms": 146388, "end_ms": 146608, "start_s": 146, "text": "aqui", "frame": "frames/frame_0150s.jpg"}, {"start_ms": 151889, "end_ms": 159709, "start_s": 151, "text": "chamar o copilot do chatroot só que o copilot do chatroot tá conectado lá no opencloud que tá no mac", "frame": "frames/frame_0150s.jpg"}, {"start_ms": 159709, "end_ms": 164949, "start_s": 159, "text": "mini dele esse aqui já é outro chatroot o chatroot tá na vps dele aquela lá que você viu junto", "frame": "frames/frame_0160s.jpg"}, {"start_ms": 164949, "end_ms": 172709, "start_s": 164, "text": "com o n8n e aí tem várias conexões com o opencloud uma delas é esse draft e a outra delas", "frame": "frames/frame_0160s.jpg"}, {"start_ms": 172709, "end_ms": 180189, "start_s": 172, "text": "é o copilot aqui ó aí dá pra clicar aqui também às vezes esse sumarize funciona às vezes esse sumarize", "frame": "frames/frame_0170s.jpg"}, {"start_ms": 180189, "end_ms": 180929, "start_s": 180, "text": "não funciona", "frame": "frames/frame_0180s.jpg"}, {"start_ms": 182551, "end_ms": 187091, "start_s": 182, "text": "Será que vai funcionar nesse cara aqui?", "frame": "frames/frame_0180s.jpg"}, {"start_ms": 192451, "end_ms": 194511, "start_s": 192, "text": "Não funcionou.", "frame": "frames/frame_0190s.jpg"}, {"start_ms": 195811, "end_ms": 198071, "start_s": 195, "text": "Mas tem gente quando tem muita conversa ele funciona.", "frame": "frames/frame_0200s.jpg"}, {"start_ms": 200011, "end_ms": 204451, "start_s": 200, "text": "Mas esse copilot, esse copilot aqui tem que dar uma otimizada nele, mas ele tá bem bonzinho.", "frame": "frames/frame_0200s.jpg"}, {"start_ms": 206231, "end_ms": 209711, "start_s": 206, "text": "Tem que deixar ele bem da hora, mas esse aqui você não precisa se preocupar.", "frame": "frames/frame_0210s.jpg"}, {"start_ms": 214377, "end_ms": 216217, "start_s": 214, "text": "E aqui o e-mail dele é Outlook, ó.", "frame": "frames/frame_0210s.jpg"}, {"start_ms": 216737, "end_ms": 223317, "start_s": 216, "text": "O e-mail dele é Outlook, tá conectado numa gambiarra muito louca, com Zoom, Zoom não, Zapier e N8n,", "frame": "frames/frame_0220s.jpg"}, {"start_ms": 223957, "end_ms": 230477, "start_s": 223, "text": "porque o Outlook dele não tinha autorização de pegar as credenciais lá, o admin tinha que autorizar.", "frame": "frames/frame_0220s.jpg"}, {"start_ms": 231197, "end_ms": 235497, "start_s": 231, "text": "Aí agora o admin autorizou, o Gustavo vai conectar o Outlook direito, se precisar.", "frame": "frames/frame_0230s.jpg"}, {"start_ms": 235597, "end_ms": 238097, "start_s": 235, "text": "Se precisar não, vai precisar, né? Que não dá pra ficar usando Zapier.", "frame": "frames/frame_0240s.jpg"}, {"start_ms": 239537, "end_ms": 242857, "start_s": 239, "text": "O que mais que temos?", "frame": "frames/frame_0240s.jpg"}, {"start_ms": 247807, "end_ms": 254067, "start_s": 247, "text": "isso aqui eu fiz tudo no prompt, opencloud, tipo o meu opencloud, o meu computador faz a ssh no mac", "frame": "frames/frame_0250s.jpg"}, {"start_ms": 254067, "end_ms": 261207, "start_s": 254, "text": "mini dele, faz a ssh na vps e vai configurando tudo aí esse", "frame": "frames/frame_0250s.jpg"}, {"start_ms": 262467, "end_ms": 263547, "start_s": 262, "text": "autodraft ó,", "frame": "frames/frame_0260s.jpg"}, {"start_ms": 264827, "end_ms": 271007, "start_s": 264, "text": "que ele roda pra caramba, deixa eu ver ele aqui, se ele tá falhando muito até que não", "frame": "frames/frame_0260s.jpg"}, {"start_ms": 272849, "end_ms": 276569, "start_s": 272, "text": "Mas tem que dar uma averiguada nele, mas tipo assim, tem que deixar isso aí tudo seguro, né?", "frame": "frames/frame_0270s.jpg"}, {"start_ms": 276589, "end_ms": 278109, "start_s": 276, "text": "O que eu tô falando pra você é pra deixar seguro.", "frame": "frames/frame_0280s.jpg"}, {"start_ms": 279609, "end_ms": 284809, "start_s": 279, "text": "Essas partes de desenvolver, eu acho que eu e o Gustavo fazemos, mas se você quiser fazer também, ótimo.", "frame": "frames/frame_0280s.jpg"}, {"start_ms": 286529, "end_ms": 289529, "start_s": 286, "text": "Aqui", "frame": "frames/frame_0290s.jpg"}, {"start_ms": 291289, "end_ms": 293089, "start_s": 291, "text": "é o Chatbot Bridge que eu te mostrei.", "frame": "frames/frame_0290s.jpg"}, {"start_ms": 296035, "end_ms": 300555, "start_s": 296, "text": "Outbound, Dispatch, Autodraft, Open Cloud, Copilot, Proxy. É esse aqui, ó.", "frame": "frames/frame_0300s.jpg"}, {"start_ms": 300975, "end_ms": 307695, "start_s": 300, "text": "Esse aqui é o que faz um proxy pro Copilot, porque tipo, o Endpoint lá, a configuraçãozinha do Copilot não", "frame": "frames/frame_0300s.jpg"}, {"start_ms": 307695, "end_ms": 311595, "start_s": 307, "text": "aceita... não é compatível, aí ele faz esse proxy aqui.", "frame": "frames/frame_0310s.jpg"}, {"start_ms": 311695, "end_ms": 314315, "start_s": 311, "text": "Eu nem vi isso aqui, a IA fez aqui, eu nem li o que que fez.", "frame": "frames/frame_0310s.jpg"}, {"start_ms": 315055, "end_ms": 318015, "start_s": 315, "text": "Ah, e isso aqui tá conectado no Mac Mini dele por ter o scale.", "frame": "frames/frame_0320s.jpg"}, {"start_ms": 324318, "end_ms": 328118, "start_s": 324, "text": "Então o copilotzinho, ele passa nesse proxy.", "frame": "frames/frame_0320s.jpg"}, {"start_ms": 331418, "end_ms": 339338, "start_s": 331, "text": "Eu acho que às vezes ele tá gerando as respostas e não tá conseguindo mandar lá no chat útil.", "frame": "frames/frame_0330s.jpg"}, {"start_ms": 343058, "end_ms": 347738, "start_s": 343, "text": "Esse autodraft é o que ele fica gerando no automático.", "frame": "frames/frame_0340s.jpg"}, {"start_ms": 355057, "end_ms": 355937, "start_s": 355, "text": "será que é isso?", "frame": "frames/frame_0360s.jpg"}, {"start_ms": 356577, "end_ms": 357797, "start_s": 356, "text": "Ah, é o filtro de inbound.", "frame": "frames/frame_0360s.jpg"}, {"start_ms": 359677, "end_ms": 364437, "start_s": 359, "text": "Olha lá, esse draft aqui ele gerou.", "frame": "frames/frame_0360s.jpg"}, {"start_ms": 366697, "end_ms": 368097, "start_s": 366, "text": "Get AI draft.", "frame": "frames/frame_0370s.jpg"}, {"start_ms": 369177, "end_ms": 370917, "start_s": 369, "text": "Post draft as private note.", "frame": "frames/frame_0370s.jpg"}, {"start_ms": 373377, "end_ms": 376377, "start_s": 373, "text": "Esse", "frame": "frames/frame_0370s.jpg"}, {"start_ms": 377557, "end_ms": 381097, "start_s": 377, "text": "aqui com certeza tem que otimizar. Olha, a payzone aqui exposta.", "frame": "frames/frame_0380s.jpg"}, {"start_ms": 382117, "end_ms": 384977, "start_s": 382, "text": "Esse aqui é ok. Ah, esse aqui é o API do chat útil.", "frame": "frames/frame_0380s.jpg"}, {"start_ms": 387437, "end_ms": 390437, "start_s": 387, "text": "Que", "frame": "frames/frame_0390s.jpg"}, {"start_ms": 391297, "end_ms": 395957, "start_s": 391, "text": "louco isso aqui, velho. Olha o contexto que ele recebe, ou a gente recebe.", "frame": "frames/frame_0390s.jpg"}, {"start_ms": 401817, "end_ms": 404817, "start_s": 401, "text": "Post", "frame": "frames/frame_0400s.jpg"}, {"start_ms": 406097, "end_ms": 410377, "start_s": 406, "text": "as a draft, name Chris Lam, available avatar, offline, created.", "frame": "frames/frame_0410s.jpg"}, {"start_ms": 412169, "end_ms": 413269, "start_s": 412, "text": "Are you meeting Thursday?", "frame": "frames/frame_0410s.jpg"}, {"start_ms": 414889, "end_ms": 416469, "start_s": 414, "text": "Será que acha esse autodraft?", "frame": "frames/frame_0410s.jpg"}, {"start_ms": 418049, "end_ms": 427429, "start_s": 418, "text": "Esses autodrafts aqui... Caraca, mano... Mano, ele recebe mensagem com força.", "frame": "frames/frame_0420s.jpg"}, {"start_ms": 430509, "end_ms": 432749, "start_s": 430, "text": "Ah, esse aqui, ó. Esse autodraft é esse aqui.", "frame": "frames/frame_0430s.jpg"}, {"start_ms": 433349, "end_ms": 436229, "start_s": 433, "text": "Tá vendo? Mas era pra ele aparecer aqui, velho.", "frame": "frames/frame_0430s.jpg"}, {"start_ms": 436289, "end_ms": 437649, "start_s": 436, "text": "Não sei por que ele não tá aparecendo aqui.", "frame": "frames/frame_0440s.jpg"}, {"start_ms": 439675, "end_ms": 443475, "start_s": 439, "text": "Porque a ideia era o autodraft aparecer aqui automaticamente.", "frame": "frames/frame_0440s.jpg"}, {"start_ms": 444615, "end_ms": 448675, "start_s": 444, "text": "E ele melhora aqui e manda.", "frame": "frames/frame_0440s.jpg"}, {"start_ms": 450915, "end_ms": 451595, "start_s": 450, "text": "Mas beleza.", "frame": "frames/frame_0450s.jpg"}, {"start_ms": 453395, "end_ms": 455655, "start_s": 453, "text": "Eu acho que é só isso.", "frame": "frames/frame_0450s.jpg"}, {"start_ms": 456935, "end_ms": 457655, "start_s": 456, "text": "Por enquanto.", "frame": "frames/frame_0460s.jpg"}, {"start_ms": 458735, "end_ms": 460435, "start_s": 458, "text": "Só esses workflow aí que tem por enquanto.", "frame": "frames/frame_0460s.jpg"}, {"start_ms": 460795, "end_ms": 463915, "start_s": 460, "text": "Tô configurando um aqui de fazer as transcrições no automático.", "frame": "frames/frame_0460s.jpg"}, {"start_ms": 466035, "end_ms": 469115, "start_s": 466, "text": "E tem uns de vídeo aqui de extração de concorrente e tal.", "frame": "frames/frame_0470s.jpg"}, {"start_ms": 471383, "end_ms": 473643, "start_s": 471, "text": "Ah, tem esses aqui de e-mail também, tá vendo?", "frame": "frames/frame_0470s.jpg"}, {"start_ms": 474683, "end_ms": 477683, "start_s": 474, "text": "Isso", "frame": "frames/frame_0470s.jpg"}, {"start_ms": 481183, "end_ms": 483763, "start_s": 481, "text": "aqui agora dá pra configurar, ó. Antes não dava, agora dá.", "frame": "frames/frame_0480s.jpg"}, {"start_ms": 483863, "end_ms": 486143, "start_s": 483, "text": "Deixa eu ver aqui. Às vezes até já autenticou aqui, ó.", "frame": "frames/frame_0480s.jpg"}, {"start_ms": 486183, "end_ms": 487183, "start_s": 486, "text": "Que a mulher autorizou lá.", "frame": "frames/frame_0490s.jpg"}, {"start_ms": 501303, "end_ms": 502663, "start_s": 501, "text": "Olha lá, autorizou, conectou.", "frame": "frames/frame_0500s.jpg"}, {"start_ms": 504143, "end_ms": 504683, "start_s": 504, "text": "Que beleza.", "frame": "frames/frame_0500s.jpg"}, {"start_ms": 505783, "end_ms": 509463, "start_s": 505, "text": "Esse aqui autorizou ontem, o pessoal liberou lá do admin dele ontem.", "frame": "frames/frame_0500s.jpg"}, {"start_ms": 511903, "end_ms": 515823, "start_s": 511, "text": "Aí, show.", "frame": "frames/frame_0510s.jpg"}, {"start_ms": 517323, "end_ms": 520323, "start_s": 517, "text": "Esse", "frame": "frames/frame_0520s.jpg"}, {"start_ms": 523303, "end_ms": 524303, "start_s": 523, "text": "aqui foi o Gustavo que fez.", "frame": "frames/frame_0520s.jpg"}, {"start_ms": 526203, "end_ms": 528203, "start_s": 526, "text": "O pessoal fez esse Node aqui.", "frame": "frames/frame_0530s.jpg"}, {"start_ms": 530682, "end_ms": 532582, "start_s": 530, "text": "Vou desligar ele por enquanto.", "frame": "frames/frame_0530s.jpg"}, {"start_ms": 536762, "end_ms": 541622, "start_s": 536, "text": "Ah, tem um monte de workflow aqui, nada a ver.", "frame": "frames/frame_0540s.jpg"}, {"start_ms": 541742, "end_ms": 543462, "start_s": 541, "text": "Nós vamos dar uma limpada aqui gigantesca.", "frame": "frames/frame_0540s.jpg"}, {"start_ms": 544342, "end_ms": 546262, "start_s": 544, "text": "Um monte aqui de workflow, nada a ver.", "frame": "frames/frame_0540s.jpg"}, {"start_ms": 546602, "end_ms": 547582, "start_s": 546, "text": "Um monte, um monte, um monte.", "frame": "frames/frame_0550s.jpg"}, {"start_ms": 549162, "end_ms": 550662, "start_s": 549, "text": "Será que isso aqui tá funcionando?", "frame": "frames/frame_0550s.jpg"}, {"start_ms": 551962, "end_ms": 554402, "start_s": 551, "text": "Não, isso aqui é só de...", "frame": "frames/frame_0550s.jpg"}, {"start_ms": 556214, "end_ms": 562474, "start_s": 556, "text": "demonstração mas eu acho que é basicamente mas depois a gente vai ver com Gustavo também vai te mostrar mas", "frame": "frames/frame_0560s.jpg"}, {"start_ms": 562474, "end_ms": 565874, "start_s": 562, "text": "tem quase certeza que são exatamente só esses aí.", "frame": "frames/frame_0560s.jpg"}, {"start_ms": 572714, "end_ms": 574454, "start_s": 572, "text": "São esses aqui os principais.", "frame": "frames/frame_0570s.jpg"}, {"start_ms": 575314, "end_ms": 577454, "start_s": 575, "text": "Também.", "frame": "frames/frame_0580s.jpg"}, {"start_ms": 578388, "end_ms": 585808, "start_s": 578, "text": "Agora, ah tá, esse aqui são outras versões, esse aqui pode arquivar talvez, porque o OpenCloud ele vai criar um", "frame": "frames/frame_0580s.jpg"}, {"start_ms": 585808, "end_ms": 589788, "start_s": 585, "text": "workflow, aí quando ele vai melhorar ele vai fazendo outras versões até ficar bom.", "frame": "frames/frame_0580s.jpg"}, {"start_ms": 593052, "end_ms": 599532, "start_s": 593, "text": "É, é aquilo ali, mano. Aquilo ali e o chatroot dele na VPS, que é o mais importante.", "frame": "frames/frame_0590s.jpg"}, {"start_ms": 599752, "end_ms": 599932, "start_s": 599, "text": "Ah,", "frame": "frames/frame_0600s.jpg"}, {"start_ms": 600832, "end_ms": 606492, "start_s": 600, "text": "eu não sei se esse negócio aqui tá usando o Salesforce CLI que tá instalado na VPS dele.", "frame": "frames/frame_0600s.jpg"}, {"start_ms": 606972, "end_ms": 609692, "start_s": 606, "text": "Tem uma instância na VPS dele com o Salesforce CLI.", "frame": "frames/frame_0610s.jpg"}, {"start_ms": 610232, "end_ms": 614452, "start_s": 610, "text": "Mas o que eu acho que tá rolando aqui é...", "frame": "frames/frame_0610s.jpg"}, {"start_ms": 614452, "end_ms": 618972, "start_s": 614, "text": "Aqui tá mandando pro agente do OpenCloud lá no Mac Mini dele.", "frame": "frames/frame_0610s.jpg"}, {"start_ms": 619951, "end_ms": 622011, "start_s": 619, "text": "e tá usando o Salesforce CLI por lá.", "frame": "frames/frame_0620s.jpg"}, {"start_ms": 622191, "end_ms": 625251, "start_s": 622, "text": "A gente chegou a configurar aqui uma vez, quer ver, mano?", "frame": "frames/frame_0620s.jpg"}, {"start_ms": 626311, "end_ms": 628211, "start_s": 626, "text": "Mas aí depois a gente largou pra lá.", "frame": "frames/frame_0630s.jpg"}, {"start_ms": 629531, "end_ms": 630291, "start_s": 629, "text": "Acho que é esse aqui.", "frame": "frames/frame_0630s.jpg"}, {"start_ms": 631211, "end_ms": 632231, "start_s": 631, "text": "Esse aqui, ó.", "frame": "frames/frame_0630s.jpg"}, {"start_ms": 633051, "end_ms": 636311, "start_s": 633, "text": "Que aí ele dá uns get aqui, ó.", "frame": "frames/frame_0630s.jpg"}, {"start_ms": 637391, "end_ms": 638951, "start_s": 637, "text": "No Salesforce CLI.", "frame": "frames/frame_0640s.jpg"}, {"start_ms": 640351, "end_ms": 642171, "start_s": 640, "text": "Esse aqui pode servir também pra alguma coisa.", "frame": "frames/frame_0640s.jpg"}, {"start_ms": 643331, "end_ms": 645471, "start_s": 643, "text": "Ó, tem até a API aqui já configurada.", "frame": "frames/frame_0640s.jpg"}, {"start_ms": 645837, "end_ms": 655137, "start_s": 645, "text": "ele deu uns gates aqui, ele pega o histórico do contato pega os empréstimos e salva no Super Base era", "frame": "frames/frame_0640s.jpg"}, {"start_ms": 655137, "end_ms": 659477, "start_s": 655, "text": "pra estar aparecendo aqui, teve umas execuções aqui que deu certo não sei se foi nesse ou se foi em", "frame": "frames/frame_0660s.jpg"}, {"start_ms": 659477, "end_ms": 669337, "start_s": 659, "text": "outro mas só pra você saber que tem esses nodes aqui e tem um Salesforce CLI instalado na VPS, mas", "frame": "frames/frame_0660s.jpg"}, {"start_ms": 669337, "end_ms": 671797, "start_s": 669, "text": "esse trem aqui não tá usando o Salesforce CLI, eu acho, né?", "frame": "frames/frame_0670s.jpg"}, {"start_ms": 672317, "end_ms": 674677, "start_s": 672, "text": "esse aqui é o API normal do Salesforce", "frame": "frames/frame_0670s.jpg"}, {"start_ms": 679874, "end_ms": 693014, "start_s": 679, "text": "é isso o negócio desse cara é isso basicamente aí aqui eu vou te conectar na vps você vai falar", "frame": "frames/frame_0680s.jpg"}, {"start_ms": 693014, "end_ms": 699614, "start_s": 693, "text": "com um agente desse aqui provavelmente esse aqui ó e aí esse agente aqui talvez vai ter que pedir ele", "frame": "frames/frame_0690s.jpg"}, {"start_ms": 699614, "end_ms": 707614, "start_s": 699, "text": "para outros agentes para poder achar ele ajudar ele a conectar no vps a fazer as coisas mas eu tô", "frame": "frames/frame_0700s.jpg"}, {"start_ms": 707614, "end_ms": 708854, "start_s": 707, "text": "usando um agente aqui ó", "frame": "frames/frame_0710s.jpg"}, {"start_ms": 710165, "end_ms": 710805, "start_s": 710, "text": "acho que é esse,", "frame": "frames/frame_0710s.jpg"}, {"start_ms": 712325, "end_ms": 718465, "start_s": 712, "text": "é eu acho que é esse aqui que ele consegue fazer ssh, conectar na vps, faz tudo essa é a", "frame": "frames/frame_0710s.jpg"}, {"start_ms": 718465, "end_ms": 721965, "start_s": 718, "text": "bagunça que nós estamos fazendo aí,", "frame": "frames/frame_0720s.jpg"}, {"start_ms": 722705, "end_ms": 725325, "start_s": 722, "text": "o blue bubbles aqui ó, aí tipo assim,", "frame": "frames/frame_0720s.jpg"}, {"start_ms": 726325, "end_ms": 731665, "start_s": 726, "text": "o opencloud ele é tá conectado com", "frame": "frames/frame_0730s.jpg"}, {"start_ms": 734178, "end_ms": 739098, "start_s": 734, "text": "Tipo, o OpenCloud responde as mensagens, ele tá conectado com o iMessages do cara,", "frame": "frames/frame_0730s.jpg"}, {"start_ms": 739798, "end_ms": 747958, "start_s": 739, "text": "independente de VPS, independente de tudo, entendeu? De chatboot, porque o OpenCloud dele tá conectado direto pelo iMessages.", "frame": "frames/frame_0740s.jpg"}, {"start_ms": 748738, "end_ms": 755954, "start_s": 748, "text": "E aí... O Bluebubbles, ele só faz o papel de rotear as mesmas mensagens que chegam para o OpenCloud, ele", "frame": "frames/frame_0750s.jpg"}, {"start_ms": 755954, "end_ms": 760394, "start_s": 755, "text": "só faz o papel de rotear lá para a VPS do iMessages, entendeu?", "frame": "frames/frame_0760s.jpg"}, {"start_ms": 760954, "end_ms": 763094, "start_s": 760, "text": "O Bluebubbles é como se fosse uma Evolution API.", "frame": "frames/frame_0760s.jpg"}, {"start_ms": 767135, "end_ms": 771375, "start_s": 767, "text": "Tipo assim, as respostas estão bem boas e tal, a missão nossa é o que?", "frame": "frames/frame_0770s.jpg"}, {"start_ms": 772295, "end_ms": 775835, "start_s": 772, "text": "É otimizar, fazer ficar melhor ainda, estável,", "frame": "frames/frame_0770s.jpg"}, {"start_ms": 776495, "end_ms": 781055, "start_s": 776, "text": "documentar, entender o que a gente tá fazendo e principalmente deixar isso aí seguro.", "frame": "frames/frame_0780s.jpg"}, {"start_ms": 781175, "end_ms": 783635, "start_s": 781, "text": "O que eu quero ver o bicho pegar é deixar isso aí seguro.", "frame": "frames/frame_0780s.jpg"}, {"start_ms": 783835, "end_ms": 786495, "start_s": 783, "text": "Assim, né? Eu não tenho ideia de nada.", "frame": "frames/frame_0780s.jpg"}, {"start_ms": 787035, "end_ms": 791335, "start_s": 787, "text": "Mas essa gambiarra aí com o Teio Scale e esse monte de coisa e agora você falou esse negócio aí", "frame": "frames/frame_0790s.jpg"}, {"start_ms": 791335, "end_ms": 793875, "start_s": 791, "text": "de várias instâncias e tudo mais.", "frame": "frames/frame_0790s.jpg"}, {"start_ms": 796632, "end_ms": 798252, "start_s": 796, "text": "É isso aí que vai ser o challenge.", "frame": "frames/frame_0800s.jpg"}, {"start_ms": 799092, "end_ms": 801012, "start_s": 799, "text": "E mano, o cara não tá nem aí pra segurança.", "frame": "frames/frame_0800s.jpg"}, {"start_ms": 801212, "end_ms": 805552, "start_s": 801, "text": "Tipo assim, ele já deixou bem claro que ele quer que faça o mais rápido possível e com as melhores", "frame": "frames/frame_0800s.jpg"}, {"start_ms": 805552, "end_ms": 808572, "start_s": 805, "text": "ferramentas que tiver. Ele deixou isso claro no SOP.", "frame": "frames/frame_0800s.jpg"}, {"start_ms": 808692, "end_ms": 810572, "start_s": 808, "text": "Falou, mano, usa as melhores ferramentas que tiver.", "frame": "frames/frame_0810s.jpg"}, {"start_ms": 811992, "end_ms": 816152, "start_s": 811, "text": "Não tem preferência e tudo mais. E tudo que pede pra ele assinar, ele assina.", "frame": "frames/frame_0810s.jpg"}];
+
+let current = 0;
+let playing = true;
+let timer = null;
+
+function formatTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2,'0')}`;
+}
+
+function render() {
+  const seg = segments[current];
+  document.getElementById('mainFrame').src = seg.frame;
+  document.getElementById('segCounter').textContent = `${current + 1} / ${segments.length}`;
+  document.getElementById('timeDisplay').textContent = `${formatTime(seg.start_ms)} / 13:38`;
+
+  const pct = (seg.start_ms / 818000) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  document.querySelectorAll('.segment').forEach((el, i) => {
+    el.classList.toggle('active', i === current);
+    el.classList.toggle('past', i < current);
+  });
+
+  const activeEl = document.querySelector('.segment.active');
+  if (activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function buildTranscript() {
+  const body = document.getElementById('transcriptBody');
+  body.innerHTML = segments.map((s, i) => `
+    <div class="segment" onclick="jumpTo(${i})">
+      <div class="seg-time">${formatTime(s.start_ms)}</div>
+      <div class="seg-text">${s.text}</div>
+    </div>
+  `).join('');
+}
+
+function jumpTo(i) {
+  current = i;
+  render();
+  if (playing) scheduleNext();
+}
+
+function prevSeg() { if (current > 0) { current--; render(); if (playing) scheduleNext(); } }
+function nextSeg() { if (current < segments.length - 1) { current++; render(); if (playing) scheduleNext(); } else { playing = false; updatePlayBtn(); } }
+
+function togglePlay() {
+  playing = !playing;
+  updatePlayBtn();
+  if (playing) scheduleNext(); else clearTimeout(timer);
+}
+
+function updatePlayBtn() {
+  const btn = document.getElementById('playBtn');
+  btn.textContent = playing ? '⏸ Pausar' : '▶ Play';
+  btn.classList.toggle('active', playing);
+}
+
+function scheduleNext() {
+  clearTimeout(timer);
+  if (!playing || current >= segments.length - 1) return;
+  const dur = segments[current + 1].start_ms - segments[current].start_ms;
+  timer = setTimeout(() => { current++; render(); scheduleNext(); }, Math.max(dur, 500));
+}
+
+function seekFromBar(e) {
+  const bar = document.getElementById('progressBar');
+  const pct = e.offsetX / bar.offsetWidth;
+  const targetMs = pct * 818000;
+  let closest = 0;
+  segments.forEach((s, i) => { if (Math.abs(s.start_ms - targetMs) < Math.abs(segments[closest].start_ms - targetMs)) closest = i; });
+  jumpTo(closest);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') nextSeg();
+  else if (e.key === 'ArrowLeft') prevSeg();
+  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+});
+
+buildTranscript();
+render();
+scheduleNext();
+</script>
+</body>
+</html>
