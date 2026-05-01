@@ -4,6 +4,8 @@
 > **Apresentado por:** Lucas F. N. Alves  
 > **Tópicos:** Chatwoot · OpenClaw · N8N · BlueBubbles · iMessage · Salesforce · Outlook
 
+<video src="https://github.com/Morfeu333/chris-lamm-walkthrough-saulo/releases/download/v1.0/2026-05-01.16-11-00_compressed.mp4" controls width="100%"></video>
+
 ---
 
 ## 📋 Índice
